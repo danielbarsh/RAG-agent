@@ -1,6 +1,6 @@
 # Document library: RAG index + agent
 
-Two systems over one document library in Azure Blob Storage.
+Two systems over one document library in Azure Blob Storage. 
 
 **Part 1** keeps an Azure AI Search index in step with the library: created,
 updated and deleted PDFs, chunked, embedded and citable.
