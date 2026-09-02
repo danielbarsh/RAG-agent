@@ -329,9 +329,16 @@ def save_session(user_id: str, session_id: str, messages: list[dict]) -> None:
 
 
 def list_sessions(user_id: str, limit: int = 20) -> list[dict]:
+    """
+    The table also holds upload: rows (see create_upload), which share
+    PartitionKey but have no updated_at. $select fills that property as None
+    rather than omitting it, so those rows must be dropped before sorting or a
+    None-vs-str comparison blows up the sort.
+    """
     rows = clients.table(config.SESSIONS_TABLE).query_entities(
         f"PartitionKey eq '{user_id}'", select=["RowKey", "updated_at"])
-    sessions = [{"session_id": r["RowKey"], "updated_at": r.get("updated_at", "")} for r in rows]
+    sessions = [{"session_id": r["RowKey"], "updated_at": r.get("updated_at") or ""}
+                for r in rows if not str(r["RowKey"]).startswith("upload:")]
     sessions.sort(key=lambda s: s["updated_at"], reverse=True)
     return sessions[:limit]
 
