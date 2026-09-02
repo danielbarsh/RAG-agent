@@ -12,11 +12,22 @@ const state = {
   pendingUpload: null,
   streaming: false,
   jobPoll: null,
+  sessionTitles: loadTitles(),
 };
 localStorage.setItem("sessionId", state.sessionId);
 
 function newSessionId() {
   return "s" + Math.random().toString(36).slice(2, 12);
+}
+
+function loadTitles() {
+  try { return JSON.parse(localStorage.getItem("sessionTitles") || "{}"); } catch (_) { return {}; }
+}
+
+function cacheTitle(sessionId, text) {
+  if (!text || state.sessionTitles[sessionId]) return;
+  state.sessionTitles[sessionId] = text.trim().slice(0, 60);
+  localStorage.setItem("sessionTitles", JSON.stringify(state.sessionTitles));
 }
 
 async function api(path, options = {}) {
@@ -130,6 +141,7 @@ async function send(message) {
 
   const userTurn = addTurn("You", "user");
   userTurn.querySelector(".body").textContent = message;
+  cacheTitle(state.sessionId, message);
 
   const agentTurn = addTurn("Librarian", "agent");
   const body = agentTurn.querySelector(".body");
@@ -165,6 +177,7 @@ async function send(message) {
     state.streaming = false;
     $("send").disabled = false;
     refreshFiles();
+    refreshSessions();
   }
 }
 
@@ -295,19 +308,80 @@ function startJobPolling() {
   state.jobPoll = setInterval(tick, 3000);
 }
 
+/* --------------------------------------------------------------- sessions */
+
+const OPENING_HTML = `<div class="opening">
+        <p class="serif">Ask what the library says, or tell me what to change in it.</p>
+        <p class="muted">Changes are proposed here and take effect only after you confirm them.</p>
+      </div>`;
+
+async function refreshSessions() {
+  try {
+    const { sessions } = await api("/api/sessions");
+    if (!sessions.length) {
+      $("session-list").innerHTML = `<li class="muted">No chats yet.</li>`;
+      return;
+    }
+    $("session-list").innerHTML = sessions.map((s) => {
+      const title = state.sessionTitles[s.session_id]
+        || (s.updated_at ? new Date(s.updated_at).toLocaleString() : s.session_id);
+      const active = s.session_id === state.sessionId ? " active" : "";
+      return `<li class="session-item${active}" data-session="${escapeHtml(s.session_id)}" title="${escapeHtml(title)}">${escapeHtml(title)}</li>`;
+    }).join("");
+    $("session-list").querySelectorAll(".session-item").forEach((li) => {
+      li.addEventListener("click", () => switchSession(li.dataset.session));
+    });
+  } catch (error) {
+    $("session-list").innerHTML = `<li class="muted">Could not load chats.</li>`;
+  }
+}
+
+async function switchSession(sessionId) {
+  if (state.streaming || sessionId === state.sessionId) return;
+  state.sessionId = sessionId;
+  localStorage.setItem("sessionId", sessionId);
+
+  state.pendingUpload = null;
+  $("attachment").classList.add("hidden");
+  $("attachment").innerHTML = "";
+  $("composer-note").textContent = "";
+
+  if (state.jobPoll) {
+    clearInterval(state.jobPoll);
+    state.jobPoll = null;
+  }
+
+  await restoreTranscript();
+  refreshSessions();
+  refreshJobs().then((active) => { if (active) startJobPolling(); });
+}
+
+function newChat() {
+  if (state.streaming) return;
+  switchSession(newSessionId());
+}
+
 /* ------------------------------------------------------------------ init */
 
 async function restoreTranscript() {
+  $("transcript").innerHTML = `<p class="muted">Loading…</p>`;
   try {
     const { messages } = await api(`/api/session/${encodeURIComponent(state.sessionId)}`);
-    if (!messages.length) return;
     $("transcript").innerHTML = "";
+    if (!messages.length) {
+      $("transcript").innerHTML = OPENING_HTML;
+      return;
+    }
     for (const message of messages) {
       const turn = addTurn(message.role === "user" ? "You" : "Librarian",
                            message.role === "user" ? "user" : "agent");
       turn.querySelector(".body").textContent = message.content || "";
     }
-  } catch (_) {}
+    const firstUser = messages.find((m) => m.role === "user");
+    if (firstUser) cacheTitle(state.sessionId, firstUser.content);
+  } catch (_) {
+    $("transcript").innerHTML = OPENING_HTML;
+  }
 }
 
 async function init() {
@@ -323,7 +397,10 @@ async function init() {
   await restoreTranscript();
   refreshFiles();
   refreshStatus();
+  refreshSessions();
   refreshJobs().then((active) => { if (active) startJobPolling(); });
+
+  $("new-chat").addEventListener("click", newChat);
 
   $("composer").addEventListener("submit", (event) => {
     event.preventDefault();
