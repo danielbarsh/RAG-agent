@@ -335,7 +335,7 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
                 "model": config.CHAT_DEPLOYMENT,
                 "messages": messages,
                 "stream": True,
-                "max_completion_tokens": 1200,
+                "max_completion_tokens": 10000,
             }
             if tools:
                 kwargs["tools"] = tools
