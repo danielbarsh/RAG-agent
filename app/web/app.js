@@ -249,7 +249,10 @@ function handleEvent(event, turn, body, toolState) {
     toolState.note = addStep(turn, toolState.label + "…");
   } else if (event.type === "tool" && event.status === "done") {
     settleStep(toolState.note, toolState.label ? `${toolState.label}. Done.` : undefined);
-    toolState.note = null;
+    // A tool finishing doesn't mean a token is imminent — reasoning models can sit
+    // silent for many seconds composing the answer. Keep a visible "running" note
+    // so the turn never looks frozen before the stall hint's 12s threshold.
+    toolState.note = addStep(turn, "Thinking");
   } else if (event.type === "citations") {
     turn.dataset.citations = JSON.stringify(event.items);
   } else if (event.type === "proposal") {
