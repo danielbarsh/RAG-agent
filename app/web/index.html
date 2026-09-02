@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Document library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+<div class="shell">
+
+  <aside class="rail">
+    <header class="rail-head">
+      <h1>Document library</h1>
+      <p id="whoami" class="muted">Checking your access…</p>
+    </header>
+
+    <section class="rail-block">
+      <div class="rail-block-head">
+        <h2>Files</h2>
+        <button id="refresh-files" class="link-button" type="button">Refresh</button>
+      </div>
+      <ul id="file-list" class="file-list"><li class="muted">Loading…</li></ul>
+    </section>
+
+    <section class="rail-block">
+      <div class="rail-block-head">
+        <h2>Index</h2>
+        <button id="refresh-status" class="link-button" type="button">Refresh</button>
+      </div>
+      <dl id="index-stats" class="stats"></dl>
+      <div id="index-errors" class="index-errors"></div>
+      <button id="backfill" class="ghost-button" type="button">Run full backfill</button>
+    </section>
+
+    <section class="rail-block">
+      <h2>Jobs</h2>
+      <div id="job-list" class="job-list"><p class="muted">Nothing queued.</p></div>
+    </section>
+  </aside>
+
+  <main class="conversation">
+    <div id="transcript" class="transcript">
+      <div class="opening">
+        <p class="serif">Ask what the library says, or tell me what to change in it.</p>
+        <p class="muted">Changes are proposed here and take effect only after you confirm them.</p>
+      </div>
+    </div>
+
+    <form id="composer" class="composer">
+      <div id="attachment" class="attachment hidden"></div>
+      <div class="composer-row">
+        <label class="attach" title="Attach a PDF">
+          <input id="file-input" type="file" accept="application/pdf" hidden />
+          <span>Attach PDF</span>
+        </label>
+        <textarea id="message" rows="1" placeholder="What does the travel policy say about rail fares?" autocomplete="off"></textarea>
+        <button id="send" type="submit">Send</button>
+      </div>
+      <p id="composer-note" class="muted small"></p>
+    </form>
+  </main>
+
+</div>
+<script src="/assets/app.js"></script>
+</body>
+</html>

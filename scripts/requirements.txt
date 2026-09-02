@@ -1,0 +1,2 @@
+httpx==0.28.1
+azure-identity==1.19.0

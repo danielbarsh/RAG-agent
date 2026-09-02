@@ -1,0 +1,15 @@
+# Terraform state contains the Entra client secret and the storage connection
+# string. It must never be committed.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+*.tfvars
+!example.tfvars
+
+.venv/
+__pycache__/
+*.pyc
+samples/
+.DS_Store
