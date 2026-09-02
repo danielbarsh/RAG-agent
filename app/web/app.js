@@ -72,6 +72,14 @@ function renderSources(turn, items) {
   scrollDown();
 }
 
+function citedNumbers(text) {
+  const nums = new Set();
+  const re = /\[(\d+)\]/g;
+  let m;
+  while ((m = re.exec(text))) nums.add(Number(m[1]));
+  return nums;
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -199,7 +207,8 @@ function handleEvent(event, turn, body) {
     renderProposal(turn, event.proposal);
   } else if (event.type === "done") {
     const citations = turn.dataset.citations ? JSON.parse(turn.dataset.citations) : [];
-    renderSources(turn, citations);
+    const cited = citedNumbers(body.textContent);
+    renderSources(turn, citations.filter((c) => cited.has(c.n)));
   } else if (event.type === "error") {
     body.textContent += `\n\n[${event.message}]`;
   }
