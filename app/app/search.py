@@ -136,20 +136,39 @@ def purge_source(source_path: str) -> dict:
 
 # --- indexer control ---------------------------------------------------------
 
+def _retry_after_seconds(response: httpx.Response, default: float = 2.0) -> float:
+    try:
+        return max(float(response.headers.get("Retry-After", default)), 0.5)
+    except ValueError:
+        return default
+
+
 def run_indexer() -> str:
     """
     Ask for an on-demand run. 409 means a run is already in flight, which is a
     success for our purposes: that run, or the one the schedule fires next, picks
     up the change. This is what makes the fast path safe to call on every event.
+
+    429 shows up when a job's own explicit call to this function lands within
+    the same instant as the index-events loop's call for the blob-write event
+    that same job just produced - two callers asking for a run at once. It is
+    throttling, not a real failure, so it is worth a couple of short, bounded
+    retries before it is reported as an error.
     """
     with _client() as c:
-        r = c.post(f"/indexers/{config.SEARCH_INDEXER}/run?api-version={_AV}")
-        if r.status_code in (202, 204):
-            return "started"
-        if r.status_code == 409:
-            return "already-running"
-        log.warning("indexer run returned %s: %s", r.status_code, r.text)
-        return f"error-{r.status_code}"
+        for attempt in range(3):
+            r = c.post(f"/indexers/{config.SEARCH_INDEXER}/run?api-version={_AV}")
+            if r.status_code in (202, 204):
+                return "started"
+            if r.status_code == 409:
+                return "already-running"
+            if r.status_code == 429 and attempt < 2:
+                wait = _retry_after_seconds(r)
+                log.info("indexer run throttled (429), retrying in %.1fs", wait)
+                time.sleep(wait)
+                continue
+            log.warning("indexer run returned %s: %s", r.status_code, r.text)
+            return f"error-{r.status_code}"
 
 
 def reset_indexer() -> None:
