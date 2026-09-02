@@ -385,11 +385,14 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
             })
 
             for call in calls:
-                yield _sse({"type": "tool", "name": call["name"], "status": "running"})
                 try:
                     args = json.loads(call["arguments"] or "{}")
                 except json.JSONDecodeError:
                     args = {}
+                # Arguments are the model's own words about what it's about to do
+                # (a search query, a file name it typed), never retrieved document
+                # content, so it's safe to show them to the user as-is.
+                yield _sse({"type": "tool", "name": call["name"], "status": "running", "args": args})
                 try:
                     outcome = _run_tool(call["name"], args, ctx)
                 except Exception as exc:  # noqa: BLE001

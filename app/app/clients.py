@@ -104,6 +104,9 @@ def openai_client():
         azure_endpoint=config.OPENAI_ENDPOINT,
         api_version=config.OPENAI_API_VERSION,
         azure_ad_token_provider=openai_token,
-        max_retries=3,
-        timeout=120.0,
+        # Bounded so a bad round fails and surfaces an error within well under a
+        # minute instead of leaving the chat looking hung for several minutes
+        # (timeout * max_retries was the worst case before).
+        max_retries=2,
+        timeout=45.0,
     )

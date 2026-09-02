@@ -142,6 +142,37 @@ function renderProposal(turn, proposal) {
 
 /* ------------------------------------------------------------------ chat */
 
+const STALL_HINT_MS = 12000;
+
+const TOOL_LABELS = {
+  search_documents: (a) => `Searching for “${a.query || "…"}”`,
+  list_files: (a) => a.name_contains ? `Listing files matching “${a.name_contains}”` : "Listing files",
+  propose_add: (a) => `Looking at ${a.target_name || "the uploaded file"}`,
+  propose_replace: (a) => `Finding ${a.file_reference || "the file"} to replace`,
+  propose_delete: (a) => `Finding ${a.file_reference || "the file"} to delete`,
+};
+
+function toolLabel(event) {
+  const make = TOOL_LABELS[event.name];
+  return make ? make(event.args || {}) : `Running ${event.name}`;
+}
+
+function addStep(turn, text) {
+  const note = document.createElement("div");
+  note.className = "tool-note running";
+  note.textContent = text;
+  turn.appendChild(note);
+  scrollDown();
+  return note;
+}
+
+function settleStep(note, text) {
+  if (!note) return;
+  note.classList.remove("running");
+  note.classList.add("done");
+  if (text) note.textContent = text;
+}
+
 async function send(message) {
   if (state.streaming) return;
   state.streaming = true;
@@ -153,6 +184,14 @@ async function send(message) {
 
   const agentTurn = addTurn("Librarian", "agent");
   const body = agentTurn.querySelector(".body");
+
+  const toolState = { note: addStep(agentTurn, "Thinking") };
+  let lastActivity = Date.now();
+  const stallTimer = setInterval(() => {
+    if (Date.now() - lastActivity >= STALL_HINT_MS && !toolState.stallNote) {
+      toolState.stallNote = addStep(agentTurn, "Still working — this is taking longer than usual");
+    }
+  }, 2000);
 
   try {
     const response = await fetch("/api/chat", {
@@ -176,12 +215,21 @@ async function send(message) {
         const frame = buffer.slice(0, cut);
         buffer = buffer.slice(cut + 2);
         if (!frame.startsWith("data: ")) continue;
-        handleEvent(JSON.parse(frame.slice(6)), agentTurn, body);
+        lastActivity = Date.now();
+        if (toolState.stallNote) {
+          toolState.stallNote.remove();
+          toolState.stallNote = null;
+        }
+        handleEvent(JSON.parse(frame.slice(6)), agentTurn, body, toolState);
       }
     }
   } catch (error) {
+    settleStep(toolState.note);
     body.textContent += `\n\n[The connection dropped: ${error.message}]`;
   } finally {
+    clearInterval(stallTimer);
+    settleStep(toolState.note);
+    if (toolState.stallNote) toolState.stallNote.remove();
     state.streaming = false;
     $("send").disabled = false;
     refreshFiles();
@@ -189,18 +237,19 @@ async function send(message) {
   }
 }
 
-function handleEvent(event, turn, body) {
+function handleEvent(event, turn, body, toolState) {
   if (event.type === "token") {
+    settleStep(toolState.note);
+    toolState.note = null;
     body.textContent += event.text;
     scrollDown();
   } else if (event.type === "tool" && event.status === "running") {
-    const note = document.createElement("div");
-    note.className = "tool-note";
-    note.textContent = event.name === "search_documents"
-      ? "Searching the library…"
-      : `Running ${event.name}…`;
-    turn.appendChild(note);
-    scrollDown();
+    settleStep(toolState.note);
+    toolState.label = toolLabel(event);
+    toolState.note = addStep(turn, toolState.label + "…");
+  } else if (event.type === "tool" && event.status === "done") {
+    settleStep(toolState.note, toolState.label ? `${toolState.label}. Done.` : undefined);
+    toolState.note = null;
   } else if (event.type === "citations") {
     turn.dataset.citations = JSON.stringify(event.items);
   } else if (event.type === "proposal") {
