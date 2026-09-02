@@ -11,6 +11,7 @@ Both authenticate with Entra ID; the service has API keys disabled.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -20,6 +21,12 @@ from . import clients, config
 log = logging.getLogger(__name__)
 
 _AV = config.SEARCH_API_VERSION
+
+# Azure AI Search is eventually consistent: a delete accepted by delete_chunks
+# is not guaranteed to be reflected in the very next query. This is how long
+# purge_source waits before re-querying to verify remaining == 0, so it isn't
+# racing its own write.
+_PURGE_CONSISTENCY_DELAY_SECONDS = 1.5
 
 
 def _client() -> httpx.Client:
@@ -122,6 +129,7 @@ def purge_source(source_path: str) -> dict:
     """
     keys = chunk_ids_for_source(source_path)
     deleted = delete_chunks(keys)
+    time.sleep(_PURGE_CONSISTENCY_DELAY_SECONDS)
     remaining = len(chunk_ids_for_source(source_path))
     return {"found": len(keys), "deleted": deleted, "remaining": remaining}
 
