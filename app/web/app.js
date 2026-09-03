@@ -292,6 +292,21 @@ function settleStep(note, text) {
   if (text) note.textContent = text;
 }
 
+/* The "Thinking" note is a bridge over a silent gap (before the first token,
+   or between a finished tool call and the next one) — it never had anything
+   worth keeping once that gap closes, so it's discarded rather than settled.
+   A real tool-status note ("Searching for … . Done.") is a record of what the
+   agent did and stays in the transcript. */
+function clearNote(toolState) {
+  if (!toolState.note) return;
+  if (toolState.notePlaceholder) {
+    toolState.note.remove();
+  } else {
+    settleStep(toolState.note);
+  }
+  toolState.note = null;
+}
+
 async function send(message) {
   if (state.streaming) return;
   state.streaming = true;
@@ -305,7 +320,7 @@ async function send(message) {
   const agentTurn = addTurn("Librarian", "agent");
   const body = agentTurn.querySelector(".body");
 
-  const toolState = { note: addStep(agentTurn, "Thinking") };
+  const toolState = { note: addStep(agentTurn, "Thinking"), notePlaceholder: true };
   let lastActivity = Date.now();
   const stallTimer = setInterval(() => {
     if (Date.now() - lastActivity >= STALL_HINT_MS && !toolState.stallNote) {
@@ -344,12 +359,12 @@ async function send(message) {
       }
     }
   } catch (error) {
-    settleStep(toolState.note);
+    clearNote(toolState);
     toolState.raw = (toolState.raw || "") + `\n\n[The connection dropped: ${error.message}]`;
     body.innerHTML = renderMarkdown(toolState.raw);
   } finally {
     clearInterval(stallTimer);
-    settleStep(toolState.note);
+    clearNote(toolState);
     if (toolState.stallNote) toolState.stallNote.remove();
     state.streaming = false;
     $("send").disabled = false;
@@ -361,21 +376,23 @@ async function send(message) {
 
 function handleEvent(event, turn, body, toolState) {
   if (event.type === "token") {
-    settleStep(toolState.note);
-    toolState.note = null;
+    clearNote(toolState);
     toolState.raw = (toolState.raw || "") + event.text;
     body.innerHTML = renderMarkdown(toolState.raw);
     scrollDown();
   } else if (event.type === "tool" && event.status === "running") {
-    settleStep(toolState.note);
+    clearNote(toolState);
     toolState.label = toolLabel(event);
     toolState.note = addStep(turn, toolState.label + "…");
+    toolState.notePlaceholder = false;
   } else if (event.type === "tool" && event.status === "done") {
     settleStep(toolState.note, toolState.label ? `${toolState.label}. Done.` : undefined);
     // A tool finishing doesn't mean a token is imminent — reasoning models can sit
     // silent for many seconds composing the answer. Keep a visible "running" note
-    // so the turn never looks frozen before the stall hint's 12s threshold.
+    // so the turn never looks frozen before the stall hint's 12s threshold. It's a
+    // bridge, not a record, so it gets discarded rather than settled once it's crossed.
     toolState.note = addStep(turn, "Thinking");
+    toolState.notePlaceholder = true;
   } else if (event.type === "citations") {
     turn.dataset.citations = JSON.stringify(event.items);
   } else if (event.type === "proposal") {
@@ -385,6 +402,7 @@ function handleEvent(event, turn, body, toolState) {
     const cited = citedNumbers(body.textContent);
     renderSources(turn, citations.filter((c) => cited.has(c.n)));
   } else if (event.type === "error") {
+    clearNote(toolState);
     toolState.raw = (toolState.raw || "") + `\n\n[${event.message}]`;
     body.innerHTML = renderMarkdown(toolState.raw);
   }
