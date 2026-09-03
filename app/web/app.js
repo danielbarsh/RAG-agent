@@ -9,7 +9,6 @@ const $ = (id) => document.getElementById(id);
 const state = {
   sessionId: localStorage.getItem("sessionId") || newSessionId(),
   me: null,
-  pendingUpload: null,
   streaming: false,
   jobPoll: null,
   sessionTitles: loadTitles(),
@@ -58,6 +57,49 @@ function addTurn(who, cssClass) {
 function scrollDown() {
   const t = $("transcript");
   t.scrollTop = t.scrollHeight;
+}
+
+/* An attachment rides inside the user's own turn as a leading marker line —
+   "📎 name · size MB" — so the chat history (plain strings, no schema change)
+   already carries what it needs to redraw the chip after a reload. */
+const ATTACHMENT_LINE = /^📎 (.+) · ([\d.]+ MB)$/;
+
+function attachmentMessage(filename, size) {
+  return `📎 ${filename} · ${(size / 1048576).toFixed(1)} MB`;
+}
+
+function buildFileChip(name, size) {
+  const chip = document.createElement("div");
+  chip.className = "file-chip";
+  const icon = document.createElement("span");
+  icon.className = "file-chip-icon";
+  icon.textContent = "📎";
+  const nameEl = document.createElement("span");
+  nameEl.className = "file-chip-name";
+  nameEl.textContent = name;
+  const sizeEl = document.createElement("span");
+  sizeEl.className = "file-chip-size";
+  sizeEl.textContent = size;
+  chip.append(icon, nameEl, sizeEl);
+  return chip;
+}
+
+function renderUserBody(el, content) {
+  el.innerHTML = "";
+  const lines = String(content ?? "").split("\n");
+  const match = lines[0] && lines[0].match(ATTACHMENT_LINE);
+  if (!match) {
+    el.textContent = content || "";
+    return;
+  }
+  el.appendChild(buildFileChip(match[1], match[2]));
+  const rest = lines.slice(1).join("\n").trim();
+  if (rest) {
+    const caption = document.createElement("div");
+    caption.className = "caption";
+    caption.textContent = rest;
+    el.appendChild(caption);
+  }
 }
 
 function renderSources(turn, items) {
@@ -254,9 +296,10 @@ async function send(message) {
   if (state.streaming) return;
   state.streaming = true;
   $("send").disabled = true;
+  $("file-input").disabled = true;
 
   const userTurn = addTurn("You", "user");
-  userTurn.querySelector(".body").textContent = message;
+  renderUserBody(userTurn.querySelector(".body"), message);
   cacheTitle(state.sessionId, message);
 
   const agentTurn = addTurn("Librarian", "agent");
@@ -310,6 +353,7 @@ async function send(message) {
     if (toolState.stallNote) toolState.stallNote.remove();
     state.streaming = false;
     $("send").disabled = false;
+    $("file-input").disabled = false;
     refreshFiles();
     refreshSessions();
   }
@@ -369,13 +413,18 @@ async function attach(file) {
     });
     if (!put.ok) throw new Error(`storage returned ${put.status}`);
 
-    state.pendingUpload = grant;
-    const box = $("attachment");
-    box.classList.remove("hidden");
-    box.innerHTML = `<span>${escapeHtml(file.name)} — ${(file.size / 1048576).toFixed(1)} MB, ready</span>
-                     <span class="muted">upload id ${escapeHtml(grant.upload_id)}</span>`;
-    $("composer-note").textContent = "Now say what to do with it, for example “add this as travel-policy.pdf”.";
-    $("message").focus();
+    $("composer-note").textContent = "";
+    const line = attachmentMessage(file.name, file.size);
+    if (state.streaming) {
+      // Can't send mid-turn — fold it into the composer so it rides along
+      // with whatever the user sends next, instead of getting lost.
+      const existing = $("message").value;
+      $("message").value = existing ? `${line}\n\n${existing}` : line;
+      $("message").dispatchEvent(new Event("input"));
+      $("composer-note").textContent = "Attached — it will go with your next message.";
+    } else {
+      send(line);
+    }
   } catch (error) {
     $("composer-note").textContent = `Upload failed: ${error.message}`;
   }
@@ -482,9 +531,7 @@ async function switchSession(sessionId) {
   state.sessionId = sessionId;
   localStorage.setItem("sessionId", sessionId);
 
-  state.pendingUpload = null;
-  $("attachment").classList.add("hidden");
-  $("attachment").innerHTML = "";
+  $("message").value = "";
   $("composer-note").textContent = "";
 
   if (state.jobPoll) {
@@ -518,7 +565,7 @@ async function restoreTranscript() {
       const turn = addTurn(isUser ? "You" : "Librarian", isUser ? "user" : "agent");
       const bodyEl = turn.querySelector(".body");
       if (isUser) {
-        bodyEl.textContent = message.content || "";
+        renderUserBody(bodyEl, message.content || "");
       } else {
         bodyEl.innerHTML = renderMarkdown(message.content || "");
       }

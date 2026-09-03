@@ -59,6 +59,8 @@ html, body {
    detection, since a multi-paragraph answer can mix Hebrew and English. */
 .turn .body,
 .turn.agent .body :is(p, li, ul, ol, h1, h2, h3, h4, h5, h6),
+.turn.user .body .caption,
+.file-chip-name,
 .opening p,
 .warrant .subject,
 .warrant p,
@@ -252,6 +254,22 @@ textarea#message,
   padding: 10px 12px;
   white-space: pre-wrap;
 }
+.turn.user .body .caption { margin-top: 8px; }
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.file-chip-icon { flex: none; }
+.file-chip-name { font-weight: 600; word-break: break-word; }
+.file-chip-size { color: var(--slate); white-space: nowrap; }
 
 .turn.agent .body {
   font-family: "IBM Plex Serif", Georgia, serif;
@@ -455,19 +473,6 @@ button#send {
 }
 button#send:hover:not(:disabled) { filter: brightness(1.12); }
 button#send:disabled { opacity: .45; cursor: default; }
-
-.attachment {
-  max-width: 68ch;
-  margin-bottom: 8px;
-  font-size: 13px;
-  background: var(--panel);
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  padding: 7px 10px;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
 
 :focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
 
