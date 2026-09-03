@@ -351,6 +351,7 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
     client = clients.openai_client()
     tools_locked = False
     assistant_text_parts: list[str] = []
+    completed = False
 
     try:
         for _round in range(MAX_ROUNDS):
@@ -397,26 +398,51 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
             if text:
                 assistant_text_parts.append(text)
 
-            if finish_reason == "length":
-                # max_completion_tokens is shared with the model's hidden reasoning
-                # tokens. When reasoning eats the whole budget (typically the round
-                # right after a tool call, digesting retrieved text), content or a
-                # tool call comes back truncated or empty. Without this check that
-                # looked like a normal, completed turn — the last real sentence the
-                # user saw was "let me search for that", with no error and no answer.
+            if finish_reason in ("length", "content_filter"):
+                # "length": max_completion_tokens is shared with the model's hidden
+                # reasoning tokens. When reasoning eats the whole budget (typically
+                # the round right after a tool call, digesting retrieved text),
+                # content or a tool call comes back truncated or empty.
+                # "content_filter": Azure's content filter blocked the completion,
+                # most often because retrieved document text tripped it.
+                # Without this check either one looked like a normal, completed
+                # turn — the last real sentence the user saw was "let me search
+                # for that", with no error and no answer.
                 log.warning(
-                    "chat completion truncated by max_completion_tokens (round %s, had_tool_calls=%s)",
-                    _round, bool(tool_calls),
+                    "chat completion stopped with finish_reason=%r (round %s, had_tool_calls=%s)",
+                    finish_reason, _round, bool(tool_calls),
                 )
                 yield _sse({
                     "type": "error",
-                    "message": "The answer was cut off before it finished (ran out of response "
-                               "budget). The message was not saved — please try again.",
+                    "message": (
+                        "The answer was cut off before it finished (ran out of response budget)."
+                        if finish_reason == "length" else
+                        "The response was blocked by a content filter."
+                    ) + " The message was not saved — please try again.",
                 })
                 return
 
             if not tool_calls:
+                if not text.strip() and _round > 0:
+                    # A round after a tool call that comes back with nothing at all
+                    # (no tool call, no text) is never a valid answer, whatever
+                    # finish_reason claims — some gateways/models report "stop" on
+                    # an effectively empty completion instead of "length" or
+                    # "content_filter". Treat it as a failure rather than silently
+                    # keeping the earlier "let me search for that" as if it were
+                    # the whole answer.
+                    log.warning(
+                        "chat completion returned no content after a tool call "
+                        "(round %s, finish_reason=%r)", _round, finish_reason,
+                    )
+                    yield _sse({
+                        "type": "error",
+                        "message": "The model didn't produce an answer after searching. "
+                                   "The message was not saved — please try again.",
+                    })
+                    return
                 messages.append({"role": "assistant", "content": text})
+                completed = True
                 break
 
             calls = [tool_calls[i] for i in sorted(tool_calls)]
@@ -457,6 +483,19 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
                 if outcome.locks:
                     # The injection firewall. From here on, no tools.
                     tools_locked = True
+
+        if not completed:
+            # Ran out of rounds while the model was still issuing tool calls
+            # (only reachable when none of them ever locked the tools, e.g. a
+            # run of list_files / propose_* calls). Whatever text piled up along
+            # the way is preamble, not an answer - don't save it as one.
+            log.warning("chat turn exhausted MAX_ROUNDS=%s without a final answer", MAX_ROUNDS)
+            yield _sse({
+                "type": "error",
+                "message": "The model didn't reach an answer in time. "
+                           "The message was not saved — please try again.",
+            })
+            return
 
         final_text = "".join(assistant_text_parts).strip()
         history.append({"role": "assistant", "content": final_text or "(no answer)"})
