@@ -1,37 +1,45 @@
 /*
-  Visual brief: an archive reading room after hours — the lamps are down but
-  the shelves are still legible. The library is always visible on the left
-  because the whole point of the product is that the agent is acting on real
-  files. Answers are set in a serif so a cited passage reads like a document;
-  the interface around them is a quiet sans.
+  Visual brief: a calm, well-lit reading room rendered in a modern charcoal /
+  slate dark theme — the library is always visible on the left because the
+  whole point of the product is that the agent is acting on real files.
+  Answers are set in a serif so a cited passage reads like a document; the
+  interface around them is a quiet sans.
 
-  One accent only: ochre (now a candlelight amber, brightened for a dark
-  ground), reserved for the moment a change is waiting on a human. Nothing
-  else in the interface is allowed to use it, so an unresolved confirmation
-  is impossible to miss.
+  One accent only: amber, reserved for the moment a change is waiting on a
+  human. Nothing else in the interface is allowed to use it, so an unresolved
+  confirmation is impossible to miss.
 
-  Chat content (the user's message, the agent's answer, cited excerpts) is
-  free text that may be Hebrew, English, or a mix of both — those elements
-  use `unicode-bidi: plaintext` so each paragraph's direction is detected
-  from its own first strong character, the same way native RTL-aware apps
-  behave, without flipping the surrounding (English) chrome.
+  Chat content (the user's message, the agent's answer, cited excerpts,
+  filenames) is free text that may be Hebrew, English, or a mix of both —
+  those elements use `unicode-bidi: plaintext` so each paragraph's direction
+  is detected from its own first strong character, the same way native
+  RTL-aware apps behave, without flipping the surrounding (English) chrome.
+  Technical tokens embedded in that text (inline `code`, paths, flags) stay
+  forced LTR regardless of the surrounding paragraph's direction, since a
+  reversed `--flag` or `a/b/path` is unreadable no matter which way the
+  prose around it runs.
 */
 
 :root {
-  --ink: #efe9dd;
-  --ink-soft: #c7bfae;
-  --slate: #8e8578;
-  --line: #322c22;
-  --page: #131110;
-  --panel: #1c1916;
-  --rail: #18150f;
-  --ochre: #e3a54c;
-  --on-ochre: #1c1406;
-  --ochre-wash: #2a2013;
-  --alarm: #e2796a;
-  --ok: #6cbd85;
+  --ink: #eef1f8;
+  --ink-soft: #b6c0d6;
+  --slate: #7e8bab;
+  --line: #263049;
+  --page: #0f172a;
+  --panel: #17223b;
+  --rail: #0b1220;
+  --card: #1b2740;
+  --chip: #223052;
+  --ochre: #f2b155;
+  --on-ochre: #221606;
+  --ochre-wash: #2c2415;
+  --alarm: #f0897a;
+  --ok: #6fd39a;
+  --pdf: #ef8f6b;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --radius: 4px;
+  --shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --radius: 6px;
+  --radius-lg: 12px;
   color-scheme: dark;
 }
 
@@ -52,7 +60,7 @@ html, body {
 .small { font-size: 13px; }
 .hidden { display: none !important; }
 
-::selection { background: rgba(227, 165, 76, 0.32); color: var(--ink); }
+::selection { background: rgba(242, 177, 85, 0.32); color: var(--ink); }
 
 /* Chat-authored text: direction follows the content, not the chrome. Each
    rendered Markdown block (paragraph, list item, heading) gets its own
@@ -64,12 +72,12 @@ html, body {
 .opening p,
 .warrant .subject,
 .warrant p,
-.sources li,
-.sources .excerpt,
+.source-title,
+.source-excerpt,
 textarea#message,
 #composer-note,
 .session-item,
-.file-list li span:first-child,
+.file-name,
 .tool-note,
 .job-card h3,
 .job-card .muted,
@@ -90,7 +98,7 @@ textarea#message,
 .rail {
   background: var(--rail);
   border-right: 1px solid var(--line);
-  padding: 22px 20px 40px;
+  padding: 26px 22px 44px;
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
@@ -103,24 +111,37 @@ textarea#message,
 .rail-head h1 {
   font-size: 17px;
   font-weight: 600;
-  margin: 0 0 2px;
+  margin: 0 0 3px;
   letter-spacing: -0.01em;
 }
 
-.rail-block { margin-top: 28px; }
+.rail-block {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.rail-block:first-of-type { margin-top: 26px; }
 
 .rail-block h2 {
-  font-size: 13px;
-  font-weight: 600;
-  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
   color: var(--ink-soft);
 }
+.rail-block h2 svg { flex: none; opacity: 0.85; }
 
 .rail-block-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  margin-bottom: 10px;
 }
+.rail-block-head h2 { margin-bottom: 0; }
 
 .link-button {
   background: none;
@@ -157,8 +178,11 @@ textarea#message,
   font-size: 13px;
 }
 .session-item {
-  padding: 6px 8px;
-  margin: 0 -8px 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  margin: 0 -9px 3px;
   border-radius: var(--radius);
   color: var(--ink-soft);
   cursor: pointer;
@@ -166,6 +190,15 @@ textarea#message,
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.session-item::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.session-item.active::before { background: var(--ochre); }
 .session-item { transition: background-color .12s ease; }
 .session-item:hover { background: var(--panel); }
 .session-item.active {
@@ -182,14 +215,32 @@ textarea#message,
   font-size: 13px;
 }
 .file-list li {
-  padding: 6px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
-.file-list li span:first-child { word-break: break-word; }
-.file-list li span:last-child { color: var(--slate); white-space: nowrap; }
+.file-list li:last-child { border-bottom: 0; }
+.file-icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--pdf);
+  opacity: 0.9;
+}
+.file-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-size {
+  flex: none;
+  color: var(--slate);
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 .stats { margin: 0; font-size: 13px; }
 .stats div { display: flex; justify-content: space-between; padding: 3px 0; }
@@ -298,6 +349,11 @@ textarea#message,
 }
 .turn.agent .body li { margin-bottom: 4px; }
 .turn.agent .body code {
+  /* Forced LTR + isolate: a path, flag, or identifier quoted inside a
+     Hebrew sentence must not be reordered by the surrounding paragraph's
+     bidi algorithm, no matter which way the prose around it runs. */
+  direction: ltr;
+  unicode-bidi: isolate;
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 0.85em;
   background: var(--panel);
@@ -306,20 +362,49 @@ textarea#message,
   padding: 1px 5px;
 }
 .turn.agent .body pre {
-  background: var(--panel);
+  /* A fenced code block is code, not prose — always LTR, even when it
+     opens with a Hebrew comment or the paragraph around it is RTL. */
+  direction: ltr;
+  unicode-bidi: isolate;
+  position: relative;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 26px 12px 12px;
   margin: 0 0 12px;
   overflow-x: auto;
-  unicode-bidi: plaintext;
+}
+.turn.agent .body pre[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--slate);
+  background: var(--line);
+  border-end-end-radius: var(--radius);
+  padding: 3px 9px;
 }
 .turn.agent .body pre code {
+  direction: ltr;
+  unicode-bidi: isolate;
   background: none;
   border: 0;
   padding: 0;
   font-size: 13px;
 }
+
+/* Minimal, dependency-free syntax highlighting — tokens are tagged by a
+   small regex-based scanner in app.js, not a full-language grammar. */
+.tok-comment { color: var(--slate); font-style: italic; }
+.tok-string { color: var(--ok); }
+.tok-number { color: var(--pdf); }
+.tok-keyword { color: #7fb2f0; font-weight: 600; }
+.tok-fn { color: var(--ochre); }
 
 .tool-note {
   font-size: 12px;
@@ -358,11 +443,84 @@ textarea#message,
   }
 }
 
-.sources { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
-.sources h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--slate); }
-.sources ol { margin: 0; padding-inline-start: 18px; font-size: 13px; }
-.sources li { margin-bottom: 5px; }
-.sources .excerpt { color: var(--slate); }
+.sources {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+.sources h4 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.source-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+  min-width: 0;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.source-card:hover { border-color: var(--slate); }
+.source-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.source-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.source-type {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--pdf);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.source-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+.source-excerpt {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--slate);
+}
 
 /* The one loud thing in the interface. */
 .warrant {
@@ -422,52 +580,70 @@ button.primary:disabled, button.secondary:disabled { opacity: .5; cursor: defaul
 .composer {
   border-top: 1px solid var(--line);
   background: var(--panel);
-  padding: 14px 40px 18px;
+  padding: 16px 40px 20px;
 }
 
 .composer-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
   max-width: 68ch;
 }
 
-.attach {
+.composer-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  background: var(--page);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 9px 12px;
-  font-size: 13px;
-  color: var(--ink-soft);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color .12s ease, color .12s ease;
+  border-radius: var(--radius-lg);
+  padding: 6px 6px 6px 10px;
+  transition: border-color .12s ease, box-shadow .12s ease;
 }
-.attach:hover { border-color: var(--slate); color: var(--ink); }
+.composer-bar:focus-within {
+  border-color: var(--ochre);
+  box-shadow: 0 0 0 3px var(--ochre-wash);
+}
+
+.attach {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+  color: var(--slate);
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+.attach:hover { background: var(--panel); color: var(--ink); }
+.attach svg { pointer-events: none; }
 
 textarea#message {
   flex: 1;
   resize: none;
-  background: var(--page);
+  background: transparent;
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 9px 12px;
+  border: 0;
+  padding: 8px 4px;
   font: inherit;
   max-height: 180px;
-  min-height: 40px;
-  transition: border-color .12s ease;
+  min-height: 36px;
 }
-textarea#message:focus-visible { border-color: var(--ochre); }
+textarea#message:focus { outline: none; }
 textarea#message::placeholder { color: var(--slate); }
 
 button#send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 1px;
   background: var(--ink);
   color: var(--page);
   border: 0;
-  border-radius: var(--radius);
-  padding: 10px 18px;
-  font: inherit;
-  font-weight: 600;
+  border-radius: 999px;
   cursor: pointer;
   transition: filter .12s ease;
 }

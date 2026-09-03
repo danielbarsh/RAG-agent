@@ -102,14 +102,27 @@ function renderUserBody(el, content) {
   }
 }
 
+function fileTypeLabel(title) {
+  const match = /\.([a-z0-9]{2,4})$/i.exec(String(title || "").trim());
+  return match ? match[1].toUpperCase() : "DOC";
+}
+
 function renderSources(turn, items) {
   if (!items.length) return;
   const box = document.createElement("div");
   box.className = "sources";
-  const list = items
-    .map((s) => `<li><strong>[${s.n}] ${escapeHtml(s.title)}</strong><br /><span class="excerpt">${escapeHtml(s.excerpt)}…</span></li>`)
+  const cards = items
+    .map((s) => `
+      <div class="source-card">
+        <div class="source-card-head">
+          <span class="source-badge">${s.n}</span>
+          <span class="source-type">${escapeHtml(fileTypeLabel(s.title))}</span>
+        </div>
+        <div class="source-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
+        <div class="source-excerpt">${escapeHtml(s.excerpt)}…</div>
+      </div>`)
     .join("");
-  box.innerHTML = `<h4>Sources</h4><ol>${list}</ol>`;
+  box.innerHTML = `<h4>Sources</h4><div class="source-grid">${cards}</div>`;
   turn.appendChild(box);
   scrollDown();
 }
@@ -145,6 +158,47 @@ function renderInline(text) {
   return out;
 }
 
+/* Minimal, dependency-free syntax highlighting: a shared keyword list across
+   common languages plus regex-tokenized comments/strings/numbers/calls. Not
+   a real grammar, but enough visual structure to make a code sample scannable
+   instead of a wall of plain monospace text. */
+const CODE_KEYWORDS = new Set([
+  "def", "class", "return", "if", "elif", "else", "for", "while", "break", "continue",
+  "import", "from", "as", "with", "try", "except", "finally", "raise", "yield", "lambda",
+  "and", "or", "not", "in", "is", "pass", "global", "nonlocal", "assert", "del",
+  "function", "const", "let", "var", "new", "this", "self", "async", "await", "export",
+  "default", "switch", "case", "extends", "implements", "interface", "type", "enum",
+  "public", "private", "protected", "static", "void", "null", "undefined", "true", "false",
+  "True", "False", "None", "struct", "fn", "impl", "use", "pub", "mut", "match", "package",
+  "func", "defer", "go", "chan", "select", "namespace", "using", "include", "echo", "then",
+  "fi", "do", "done", "esac", "local", "readonly", "throw", "instanceof", "typeof",
+]);
+
+const CODE_TOKEN = /(#.*)|(\/\/.*)|(\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+
+function highlightCode(code) {
+  let out = "";
+  let last = 0;
+  let m;
+  CODE_TOKEN.lastIndex = 0;
+  while ((m = CODE_TOKEN.exec(code))) {
+    out += escapeHtml(code.slice(last, m.index));
+    const text = m[0];
+    let cls = null;
+    if (m[1] || m[2] || m[3]) cls = "tok-comment";
+    else if (m[4]) cls = "tok-string";
+    else if (m[5]) cls = "tok-number";
+    else if (m[6]) {
+      if (CODE_KEYWORDS.has(text)) cls = "tok-keyword";
+      else if (/^\s*\(/.test(code.slice(CODE_TOKEN.lastIndex, CODE_TOKEN.lastIndex + 4))) cls = "tok-fn";
+    }
+    out += cls ? `<span class="${cls}">${escapeHtml(text)}</span>` : escapeHtml(text);
+    last = CODE_TOKEN.lastIndex;
+  }
+  out += escapeHtml(code.slice(last));
+  return out;
+}
+
 const BLOCK_BREAK = /^\s*[-*]\s+|^\s*\d+[.)]\s+|^#{1,6}\s+|^```/;
 
 function renderMarkdown(raw) {
@@ -155,11 +209,13 @@ function renderMarkdown(raw) {
     const line = lines[i];
 
     if (/^```/.test(line)) {
+      const lang = line.slice(3).trim();
       const code = [];
       i++;
       while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
       i++;
-      blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
+      blocks.push(`<pre${langAttr}><code>${highlightCode(code.join("\n"))}</code></pre>`);
       continue;
     }
 
@@ -450,11 +506,13 @@ async function attach(file) {
 
 /* ------------------------------------------------------------------ rail */
 
+const FILE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
+
 async function refreshFiles() {
   try {
     const { files } = await api("/api/files");
     $("file-list").innerHTML = files.length
-      ? files.map((f) => `<li><span>${escapeHtml(f.name)}</span><span>${(f.size / 1048576).toFixed(1)} MB</span></li>`).join("")
+      ? files.map((f) => `<li><span class="file-icon">${FILE_ICON}</span><span class="file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><span class="file-size">${(f.size / 1048576).toFixed(1)} MB</span></li>`).join("")
       : `<li class="muted">The library is empty.</li>`;
   } catch (error) {
     $("file-list").innerHTML = `<li class="muted">Could not list files: ${escapeHtml(error.message)}</li>`;
@@ -595,7 +653,18 @@ async function restoreTranscript() {
   }
 }
 
+const PLACEHOLDER_BY_LANG = {
+  he: "מה כתוב במדיניות הנסיעות לגבי דמי רכבת?",
+};
+
+function applyLocalizedPlaceholder() {
+  const lang = (navigator.language || "en").slice(0, 2).toLowerCase();
+  const text = PLACEHOLDER_BY_LANG[lang];
+  if (text) $("message").placeholder = text;
+}
+
 async function init() {
+  applyLocalizedPlaceholder();
   try {
     state.me = await api("/api/me");
     $("whoami").textContent = state.me.is_admin
