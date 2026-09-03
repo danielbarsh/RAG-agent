@@ -303,7 +303,11 @@ textarea#message,
 .opening { max-width: 62ch; }
 .opening .serif { font-size: 20px; margin: 0 0 6px; }
 
-.turn { max-width: 68ch; margin: 0 0 26px; }
+/* The turn itself is wide — cards (sources, the confirmation warrant) are
+   free to use that room. Only continuous prose (.body) gets its own,
+   narrower cap below, so paragraphs stay a comfortable reading width even
+   though the source grid can spread out to more columns. */
+.turn { max-width: min(980px, 100%); margin: 0 0 26px; }
 
 .turn .who {
   font-size: 12px;
@@ -338,8 +342,9 @@ textarea#message,
 .file-chip-size { color: var(--slate); white-space: nowrap; }
 
 .turn.agent .body {
+  max-width: 72ch;
   font-family: "IBM Plex Serif", Georgia, serif;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.62;
 }
 .turn.agent .body > :first-child { margin-top: 0; }
@@ -599,7 +604,7 @@ button.primary:disabled, button.secondary:disabled { opacity: .5; cursor: defaul
 }
 
 .composer-row {
-  max-width: 68ch;
+  max-width: min(980px, 100%);
 }
 
 .composer-bar {
