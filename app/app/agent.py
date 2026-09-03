@@ -369,11 +369,15 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
 
             content_parts: list[str] = []
             tool_calls: dict[int, dict] = {}
+            finish_reason: str | None = None
 
             for chunk in stream:
                 if not chunk.choices:
                     continue
-                delta = chunk.choices[0].delta
+                choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+                delta = choice.delta
                 if delta is None:
                     continue
                 if delta.content:
@@ -392,6 +396,24 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
             text = "".join(content_parts)
             if text:
                 assistant_text_parts.append(text)
+
+            if finish_reason == "length":
+                # max_completion_tokens is shared with the model's hidden reasoning
+                # tokens. When reasoning eats the whole budget (typically the round
+                # right after a tool call, digesting retrieved text), content or a
+                # tool call comes back truncated or empty. Without this check that
+                # looked like a normal, completed turn — the last real sentence the
+                # user saw was "let me search for that", with no error and no answer.
+                log.warning(
+                    "chat completion truncated by max_completion_tokens (round %s, had_tool_calls=%s)",
+                    _round, bool(tool_calls),
+                )
+                yield _sse({
+                    "type": "error",
+                    "message": "The answer was cut off before it finished (ran out of response "
+                               "budget). The message was not saved — please try again.",
+                })
+                return
 
             if not tool_calls:
                 messages.append({"role": "assistant", "content": text})
