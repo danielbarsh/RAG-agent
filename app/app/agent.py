@@ -377,45 +377,66 @@ def stream_turn(user_id: str, user_name: str, session_id: str, is_admin: bool,
     try:
         for _round in range(MAX_ROUNDS):
             tools = None if tools_locked else READ_TOOLS + WRITE_TOOLS
-            kwargs: dict[str, Any] = {
-                "model": config.CHAT_DEPLOYMENT,
-                "messages": messages,
-                "stream": True,
-                "max_completion_tokens": 20000,
-            }
-            if tools:
-                kwargs["tools"] = tools
-                kwargs["tool_choice"] = "auto"
 
-            stream = client.chat.completions.create(**kwargs)
+            # A round right after a tool call (digesting retrieved text) can come
+            # back completely empty - no text, no tool call - on some Azure/
+            # reasoning-model quirks even when finish_reason claims "stop". Since
+            # nothing is streamed to the user on an empty completion, it's safe to
+            # silently retry a couple of times before surfacing an error.
+            for attempt in range(3):
+                kwargs: dict[str, Any] = {
+                    "model": config.CHAT_DEPLOYMENT,
+                    "messages": messages,
+                    "stream": True,
+                    "max_completion_tokens": 20000,
+                }
+                if tools:
+                    kwargs["tools"] = tools
+                    kwargs["tool_choice"] = "auto"
 
-            content_parts: list[str] = []
-            tool_calls: dict[int, dict] = {}
-            finish_reason: str | None = None
+                stream = client.chat.completions.create(**kwargs)
 
-            for chunk in stream:
-                if not chunk.choices:
+                content_parts: list[str] = []
+                tool_calls: dict[int, dict] = {}
+                finish_reason: str | None = None
+
+                for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    choice = chunk.choices[0]
+                    if choice.finish_reason:
+                        finish_reason = choice.finish_reason
+                    delta = choice.delta
+                    if delta is None:
+                        continue
+                    if delta.content:
+                        content_parts.append(delta.content)
+                        yield _sse({"type": "token", "text": delta.content})
+                    for tc in (delta.tool_calls or []):
+                        slot = tool_calls.setdefault(
+                            tc.index, {"id": "", "name": "", "arguments": ""})
+                        if tc.id:
+                            slot["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            slot["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            slot["arguments"] += tc.function.arguments
+
+                text = "".join(content_parts)
+
+                empty_after_tool_call = (
+                    not tool_calls and not text.strip() and _round > 0
+                    and finish_reason not in ("length", "content_filter")
+                )
+                if empty_after_tool_call and attempt < 2:
+                    log.warning(
+                        "chat completion returned no content after a tool call, "
+                        "retrying (round %s, attempt %s, finish_reason=%r)",
+                        _round, attempt, finish_reason,
+                    )
                     continue
-                choice = chunk.choices[0]
-                if choice.finish_reason:
-                    finish_reason = choice.finish_reason
-                delta = choice.delta
-                if delta is None:
-                    continue
-                if delta.content:
-                    content_parts.append(delta.content)
-                    yield _sse({"type": "token", "text": delta.content})
-                for tc in (delta.tool_calls or []):
-                    slot = tool_calls.setdefault(
-                        tc.index, {"id": "", "name": "", "arguments": ""})
-                    if tc.id:
-                        slot["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        slot["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        slot["arguments"] += tc.function.arguments
+                break
 
-            text = "".join(content_parts)
             if text:
                 assistant_text_parts.append(text)
 
