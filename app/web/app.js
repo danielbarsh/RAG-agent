@@ -546,13 +546,16 @@ async function refreshJobs() {
       $("job-list").innerHTML = `<p class="muted">Nothing queued.</p>`;
       return false;
     }
-    $("job-list").innerHTML = jobs.map((job) => `
+    $("job-list").innerHTML = jobs.map((job) => {
+      const active = job.status === "queued" || job.status === "running" || job.status === "retrying";
+      return `
       <div class="job-card ${escapeHtml(job.status)}">
-        <h3>${escapeHtml(job.operation)} ${escapeHtml(job.payload.target_name || "")}</h3>
+        <h3>${active ? '<span class="job-spinner" aria-hidden="true"></span>' : ""}${escapeHtml(job.operation)} ${escapeHtml(job.payload.target_name || "")}</h3>
         <div class="muted">${escapeHtml(job.status)}${job.attempts > 1 ? ` · attempt ${job.attempts}` : ""}</div>
         ${job.steps.length ? `<ol>${job.steps.map((s) => `<li>${escapeHtml(s.message)}</li>`).join("")}</ol>` : ""}
         ${job.result ? `<div class="muted">${escapeHtml(job.result)}</div>` : ""}
-      </div>`).join("");
+      </div>`;
+    }).join("");
     return jobs.some((job) => job.status === "queued" || job.status === "running" || job.status === "retrying");
   } catch (error) {
     return false;

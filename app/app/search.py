@@ -76,16 +76,35 @@ def search_chunks(query: str, top: int = 6, source_path: str | None = None) -> l
         return r.json().get("value", [])
 
 
-def chunk_ids_for_source(source_path: str) -> list[str]:
-    """Every chunk key belonging to one blob. Paged, so a 400-page PDF is complete."""
+def _odata_escape(value: str) -> str:
+    """Escape a value for a single-quoted OData string literal."""
+    return value.replace("'", "''")
+
+
+def chunk_ids_for_title(title: str) -> list[str]:
+    """
+    Every chunk key belonging to one document, matched by its exact file name.
+
+    Filters on `title` (metadata_storage_name, the plain blob name) rather than
+    on a reconstructed `source_path` URL. `source_path` is populated by the
+    indexer straight from Azure's own `metadata_storage_path`, and this app has
+    no guarantee its own percent-encoding of that URL agrees byte-for-byte with
+    Azure's - a guess that silently diverges for names with spaces or non-ASCII
+    characters, making the filter match nothing for such files. `title` needs no
+    re-encoding: it's compared directly against the blob name this app already
+    has in hand.
+
+    Paged, so a 400-page PDF is complete.
+    """
     keys: list[str] = []
     skip = 0
     page = 1000
+    escaped = _odata_escape(title)
     with _client() as c:
         while True:
             body = {
                 "search": "*",
-                "filter": f"source_path eq '{source_path}'",
+                "filter": f"title eq '{escaped}'",
                 "select": "chunk_id",
                 "top": page,
                 "skip": skip,
@@ -119,7 +138,7 @@ def delete_chunks(chunk_ids: list[str]) -> int:
     return sent
 
 
-def purge_source(source_path: str) -> dict:
+def purge_source(title: str) -> dict:
     """
     Belt and braces for 1.5. Index projections already remove child chunks when
     the parent blob is detected as deleted, but that depends on an indexer run
@@ -127,10 +146,10 @@ def purge_source(source_path: str) -> dict:
     re-queries to prove the count is zero, which is the answer to "how are you
     certain every chunk went with it".
     """
-    keys = chunk_ids_for_source(source_path)
+    keys = chunk_ids_for_title(title)
     deleted = delete_chunks(keys)
     time.sleep(_PURGE_CONSISTENCY_DELAY_SECONDS)
-    remaining = len(chunk_ids_for_source(source_path))
+    remaining = len(chunk_ids_for_title(title))
     return {"found": len(keys), "deleted": deleted, "remaining": remaining}
 
 

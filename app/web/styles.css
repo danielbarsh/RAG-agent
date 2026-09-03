@@ -259,11 +259,26 @@ textarea#message,
   padding: 8px 10px;
   margin-bottom: 8px;
 }
+.job-card.queued { border-left-color: var(--ochre); }
 .job-card.running { border-left-color: var(--ochre); }
+.job-card.retrying { border-left-color: var(--ochre); }
 .job-card.succeeded { border-left-color: var(--ok); }
 .job-card.failed { border-left-color: var(--alarm); }
-.job-card h3 { margin: 0 0 3px; font-size: 13px; font-weight: 600; }
+.job-card h3 { margin: 0 0 3px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .job-card ol { margin: 6px 0 0; padding-inline-start: 16px; color: var(--slate); font-size: 12px; }
+
+.job-spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--ochre);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .job-spinner { animation: job-spin .7s linear infinite; }
+  @keyframes job-spin { to { transform: rotate(360deg); } }
+}
 
 /* -------------------------------------------------------- conversation --- */
 

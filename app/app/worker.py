@@ -82,10 +82,9 @@ def _copy(source_container: str, source_blob: str,
 
 
 def _wait_until_searchable(session_id: str, job_id: str, name: str) -> str:
-    path = store.source_path(name)
     deadline = time.time() + SEARCHABLE_TIMEOUT_SECONDS
     while time.time() < deadline and not _stop.is_set():
-        if search.chunk_ids_for_source(path):
+        if search.chunk_ids_for_title(name):
             elapsed = int(SEARCHABLE_TIMEOUT_SECONDS - (deadline - time.time()))
             store.append_step(session_id, job_id, f"Searchable after about {elapsed}s.")
             return "searchable"
@@ -148,7 +147,6 @@ def op_delete(job: dict) -> str:
     payload = job["payload"]
     session_id, job_id = job["session_id"], job["job_id"]
     target = payload["target_name"]
-    path = store.source_path(target)
 
     blob = _blob(config.DOCUMENTS_CONTAINER, target)
     if blob.exists():
@@ -160,7 +158,7 @@ def op_delete(job: dict) -> str:
 
     # Two independent paths remove the chunks, and then we verify (1.5).
     store.append_step(session_id, job_id, f"Indexer: {search.run_indexer()}.")
-    result = search.purge_source(path)
+    result = search.purge_source(target)
     store.append_step(
         session_id, job_id,
         f"Chunk sweep: found {result['found']}, deleted {result['deleted']}, "
@@ -170,7 +168,7 @@ def op_delete(job: dict) -> str:
         raise RuntimeError(
             f"{result['remaining']} chunks of {target} are still in the index.")
 
-    return f"Deleted {target}. {result['deleted']} chunks removed, 0 remaining."
+    return f"Deleted {target}. {result['deleted']} chunks removed, {result['remaining']} remaining."
 
 
 OPERATIONS = {"add": op_add, "replace": op_replace, "delete": op_delete}
