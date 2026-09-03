@@ -222,7 +222,7 @@ function renderMarkdown(raw) {
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       const level = heading[1].length;
-      blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      blocks.push(`<h${level} dir="auto">${renderInline(heading[2])}</h${level}>`);
       i++;
       continue;
     }
@@ -230,20 +230,24 @@ function renderMarkdown(raw) {
     if (/^\s*[-*]\s+/.test(line)) {
       const items = [];
       while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`);
+        items.push(`<li dir="auto">${renderInline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`);
         i++;
       }
-      blocks.push(`<ul>${items.join("")}</ul>`);
+      // dir="auto" on the <ul> itself (not just each <li>) is what moves the
+      // bullet marker to the right side for RTL content - unicode-bidi:plaintext
+      // in CSS re-flows the text but can't touch marker placement, which is
+      // driven by the resolved `direction`, so the list needs its own HTML dir.
+      blocks.push(`<ul dir="auto">${items.join("")}</ul>`);
       continue;
     }
 
     if (/^\s*\d+[.)]\s+/.test(line)) {
       const items = [];
       while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
-        items.push(`<li>${renderInline(lines[i].replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
+        items.push(`<li dir="auto">${renderInline(lines[i].replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
         i++;
       }
-      blocks.push(`<ol>${items.join("")}</ol>`);
+      blocks.push(`<ol dir="auto">${items.join("")}</ol>`);
       continue;
     }
 
@@ -255,7 +259,7 @@ function renderMarkdown(raw) {
       para.push(lines[i]);
       i++;
     }
-    blocks.push(`<p>${para.map(renderInline).join("<br>")}</p>`);
+    blocks.push(`<p dir="auto">${para.map(renderInline).join("<br>")}</p>`);
   }
   return blocks.join("");
 }
