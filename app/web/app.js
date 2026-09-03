@@ -85,6 +85,83 @@ function escapeHtml(value) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* ------------------------------------------------------------- markdown */
+/*
+  A minimal, dependency-free renderer for the agent's answers. Everything is
+  HTML-escaped before any tag is added, so there is no path from model (or
+  document) text to a raw tag landing in the DOM — only the fixed set of tags
+  this function itself writes. Deliberately narrow: headings, lists, code
+  spans/fences, bold, italic, paragraphs. No links, no raw HTML passthrough.
+*/
+
+function renderInline(text) {
+  let out = escapeHtml(text);
+  out = out.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code}</code>`);
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  out = out.replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
+  out = out.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+  return out;
+}
+
+const BLOCK_BREAK = /^\s*[-*]\s+|^\s*\d+[.)]\s+|^#{1,6}\s+|^```/;
+
+function renderMarkdown(raw) {
+  const lines = String(raw ?? "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^```/.test(line)) {
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
+      i++;
+      blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ""))}</li>`);
+        i++;
+      }
+      blocks.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+        items.push(`<li>${renderInline(lines[i].replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
+        i++;
+      }
+      blocks.push(`<ol>${items.join("")}</ol>`);
+      continue;
+    }
+
+    if (!line.trim()) { i++; continue; }
+
+    const para = [line];
+    i++;
+    while (i < lines.length && lines[i].trim() && !BLOCK_BREAK.test(lines[i])) {
+      para.push(lines[i]);
+      i++;
+    }
+    blocks.push(`<p>${para.map(renderInline).join("<br>")}</p>`);
+  }
+  return blocks.join("");
+}
+
 const VERB = { add: "Add a file", replace: "Replace a file", delete: "Delete a file" };
 
 function renderProposal(turn, proposal) {
@@ -225,7 +302,8 @@ async function send(message) {
     }
   } catch (error) {
     settleStep(toolState.note);
-    body.textContent += `\n\n[The connection dropped: ${error.message}]`;
+    toolState.raw = (toolState.raw || "") + `\n\n[The connection dropped: ${error.message}]`;
+    body.innerHTML = renderMarkdown(toolState.raw);
   } finally {
     clearInterval(stallTimer);
     settleStep(toolState.note);
@@ -241,7 +319,8 @@ function handleEvent(event, turn, body, toolState) {
   if (event.type === "token") {
     settleStep(toolState.note);
     toolState.note = null;
-    body.textContent += event.text;
+    toolState.raw = (toolState.raw || "") + event.text;
+    body.innerHTML = renderMarkdown(toolState.raw);
     scrollDown();
   } else if (event.type === "tool" && event.status === "running") {
     settleStep(toolState.note);
@@ -262,7 +341,8 @@ function handleEvent(event, turn, body, toolState) {
     const cited = citedNumbers(body.textContent);
     renderSources(turn, citations.filter((c) => cited.has(c.n)));
   } else if (event.type === "error") {
-    body.textContent += `\n\n[${event.message}]`;
+    toolState.raw = (toolState.raw || "") + `\n\n[${event.message}]`;
+    body.innerHTML = renderMarkdown(toolState.raw);
   }
 }
 
@@ -434,9 +514,14 @@ async function restoreTranscript() {
       return;
     }
     for (const message of messages) {
-      const turn = addTurn(message.role === "user" ? "You" : "Librarian",
-                           message.role === "user" ? "user" : "agent");
-      turn.querySelector(".body").textContent = message.content || "";
+      const isUser = message.role === "user";
+      const turn = addTurn(isUser ? "You" : "Librarian", isUser ? "user" : "agent");
+      const bodyEl = turn.querySelector(".body");
+      if (isUser) {
+        bodyEl.textContent = message.content || "";
+      } else {
+        bodyEl.innerHTML = renderMarkdown(message.content || "");
+      }
     }
     const firstUser = messages.find((m) => m.role === "user");
     if (firstUser) cacheTitle(state.sessionId, firstUser.content);

@@ -54,8 +54,11 @@ html, body {
 
 ::selection { background: rgba(227, 165, 76, 0.32); color: var(--ink); }
 
-/* Chat-authored text: direction follows the content, not the chrome. */
+/* Chat-authored text: direction follows the content, not the chrome. Each
+   rendered Markdown block (paragraph, list item, heading) gets its own
+   detection, since a multi-paragraph answer can mix Hebrew and English. */
 .turn .body,
+.turn.agent .body :is(p, li, ul, ol, h1, h2, h3, h4, h5, h6),
 .opening p,
 .warrant .subject,
 .warrant p,
@@ -254,7 +257,50 @@ textarea#message,
   font-family: "IBM Plex Serif", Georgia, serif;
   font-size: 16px;
   line-height: 1.62;
-  white-space: pre-wrap;
+}
+.turn.agent .body > :first-child { margin-top: 0; }
+.turn.agent .body > :last-child { margin-bottom: 0; }
+.turn.agent .body p { margin: 0 0 12px; }
+.turn.agent .body h1, .turn.agent .body h2, .turn.agent .body h3,
+.turn.agent .body h4, .turn.agent .body h5, .turn.agent .body h6 {
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 16px 0 6px;
+}
+.turn.agent .body ul, .turn.agent .body ol {
+  /* Outside markers are positioned by the list's own box, which doesn't
+     reliably follow plaintext-detected direction in every browser; inside
+     markers flow with each item's text, so they land on the correct side
+     for Hebrew and English alike. */
+  list-style-position: inside;
+  margin: 0 0 12px;
+  padding-inline-start: 4px;
+}
+.turn.agent .body li { margin-bottom: 4px; }
+.turn.agent .body code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.85em;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+.turn.agent .body pre {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  unicode-bidi: plaintext;
+}
+.turn.agent .body pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 13px;
 }
 
 .tool-note {
